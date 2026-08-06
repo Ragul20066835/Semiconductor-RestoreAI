@@ -138,10 +138,33 @@ class Trainer:
         )
  
         self.start_epoch = 0
+        self.start_step = 0
+        self.global_step = 0
+        self.running_loss = 0.0
         self.best_psnr = float("-inf")
- 
+        self.best_ssim = float("-inf")
+
+        # Check resume priority
+        resume_path = None
         if args.resume:
-            self._load_checkpoint(Path(args.resume))
+            resume_path = Path(args.resume)
+        else:
+            step_path = self.checkpoint_dir / "step_checkpoint.pt"
+            latest_path = self.checkpoint_dir / "latest.pt"
+
+            if step_path.is_file():
+                try:
+                    checkpoint = _safe_load(step_path, "cpu")
+                    resume_path = step_path
+                except Exception as e:
+                    LOGGER.warning("Step checkpoint at %s is corrupted: %s. Falling back to latest.pt", step_path, e)
+                    if latest_path.is_file():
+                        resume_path = latest_path
+            elif latest_path.is_file():
+                resume_path = latest_path
+
+        if resume_path is not None:
+            self._load_checkpoint(resume_path)
  
         LOGGER.info("Device: %s", self.device)
         LOGGER.info("Train samples: %d", len(self.train_loader.dataset))
@@ -164,7 +187,10 @@ class Trainer:
                 psnr=val_metrics["psnr"],
                 ssim=val_metrics["ssim"],
             )
- 
+
+            if val_metrics["ssim"] > self.best_ssim:
+                self.best_ssim = val_metrics["ssim"]
+
             self._log_epoch(epoch_metrics)
             self._save_checkpoints(epoch + 1, epoch_metrics)
  
@@ -214,9 +240,12 @@ class Trainer:
     def _train_one_epoch(self, epoch: int) -> float:
         """Run one training epoch and return the average loss."""
         self.model.train()
-        running_loss = 0.0
+        running_loss = self.running_loss
  
         for batch_index, (inputs, targets) in enumerate(self.train_loader):
+            if batch_index < self.start_step:
+                continue
+
             inputs = inputs.to(self.device, non_blocking=True)
             targets = targets.to(self.device, non_blocking=True)
  
@@ -227,6 +256,7 @@ class Trainer:
             self.optimizer.step()
  
             running_loss += loss.item()
+            self.global_step += 1
  
             if (batch_index + 1) % self.args.log_interval == 0:
                 LOGGER.info(
@@ -237,8 +267,14 @@ class Trainer:
                     len(self.train_loader),
                     loss.item(),
                 )
+
+            if self.global_step % self.args.step_checkpoint_interval == 0:
+                self._save_step_checkpoint(epoch, batch_index, running_loss)
  
-        return running_loss / max(len(self.train_loader), 1)
+        epoch_loss = running_loss / max(len(self.train_loader), 1)
+        self.start_step = 0
+        self.running_loss = 0.0
+        return epoch_loss
  
     @torch.no_grad()
     def _validate(self, epoch: int) -> Tuple[float, Dict[str, float]]:
@@ -289,6 +325,7 @@ class Trainer:
             "model_state_dict": self.model.state_dict(),
             "optimizer_state_dict": self.optimizer.state_dict(),
             "best_psnr": self.best_psnr,
+            "best_ssim": self.best_ssim,
             "metrics": {
                 "train_loss": metrics.train_loss,
                 "val_loss": metrics.val_loss,
@@ -299,6 +336,8 @@ class Trainer:
         }
  
         latest_path = self.checkpoint_dir / "latest.pt"
+        print("Saving latest checkpoint...")
+        sys.stdout.flush()
         torch.save(checkpoint, latest_path)
         LOGGER.info("Saved latest checkpoint: %s", latest_path)
  
@@ -307,30 +346,101 @@ class Trainer:
             checkpoint["best_psnr"] = self.best_psnr
  
             best_path = self.checkpoint_dir / "best.pt"
+            print("Saving best checkpoint...")
+            sys.stdout.flush()
             torch.save(checkpoint, best_path)
             LOGGER.info(
                 "New best checkpoint saved: %s (PSNR: %.4f dB)",
                 best_path,
                 metrics.psnr,
             )
+            # Remove stale step checkpoint after successful epoch checkpoint
+            step_checkpoint = self.checkpoint_dir / "step_checkpoint.pt"
+if step_checkpoint.exists():
+    step_checkpoint.unlink()
+    LOGGER.info("Removed step checkpoint after successful epoch save.")
  
     def _load_checkpoint(self, checkpoint_path: Path) -> None:
         """Restore model, optimizer, and training progress from a checkpoint."""
         if not checkpoint_path.is_file():
             raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
  
-        checkpoint = torch.load(checkpoint_path, map_location=self.device)
+        checkpoint = _safe_load(checkpoint_path, self.device)
         self.model.load_state_dict(checkpoint["model_state_dict"])
         self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-        self.start_epoch = int(checkpoint.get("epoch", 0))
+
+        if "scheduler_state_dict" in checkpoint and checkpoint["scheduler_state_dict"] is not None:
+            if getattr(self, "scheduler", None) is not None:
+                self.scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+
+        if "current_epoch" in checkpoint:
+            self.start_epoch = int(checkpoint["current_epoch"]) - 1
+        else:
+            self.start_epoch = int(checkpoint.get("epoch", 0))
+
+        if "current_step" in checkpoint:
+            self.start_step = int(checkpoint["current_step"])
+            print("Loaded step checkpoint:")
+            print(f"Epoch: {checkpoint['current_epoch']}")
+            print(f"Step: {checkpoint['current_step']}")
+            sys.stdout.flush()
+        else:
+            self.start_step = 0
+
+        self.global_step = int(checkpoint.get("global_step", self.start_epoch * len(self.train_loader)))
+        self.running_loss = float(checkpoint.get("running_loss", 0.0))
         self.best_psnr = float(checkpoint.get("best_psnr", float("-inf")))
+        if "best_ssim" in checkpoint and checkpoint["best_ssim"] is not None:
+            self.best_ssim = float(checkpoint["best_ssim"])
+
+        if "random_state" in checkpoint:
+            random.setstate(checkpoint["random_state"])
+        if "np_random_state" in checkpoint:
+            np.random.set_state(checkpoint["np_random_state"])
+        if "torch_random_state" in checkpoint:
+            torch.set_rng_state(checkpoint["torch_random_state"].cpu())
+        if "torch_cuda_random_state" in checkpoint and checkpoint["torch_cuda_random_state"] is not None and torch.cuda.is_available():
+            torch.cuda.set_rng_state_all(checkpoint["torch_cuda_random_state"])
  
         LOGGER.info(
             "Resumed from checkpoint '%s' at epoch %d (best PSNR: %.4f dB).",
             checkpoint_path,
-            self.start_epoch,
+            self.start_epoch + 1,
             self.best_psnr,
         )
+
+    def _save_step_checkpoint(self, epoch: int, batch_index: int, running_loss: float) -> None:
+        """Save a step checkpoint atomically."""
+        checkpoint = {
+            "model_state_dict": self.model.state_dict(),
+            "optimizer_state_dict": self.optimizer.state_dict(),
+            "scheduler_state_dict": self.scheduler.state_dict() if getattr(self, "scheduler", None) is not None else None,
+            "current_epoch": epoch + 1,
+            "current_step": batch_index + 1,
+            "global_step": self.global_step,
+            "running_loss": running_loss,
+            "best_psnr": self.best_psnr,
+            "best_ssim": self.best_ssim,
+            "random_state": random.getstate(),
+            "np_random_state": np.random.get_state(),
+            "torch_random_state": torch.get_rng_state(),
+            "torch_cuda_random_state": torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None,
+        }
+
+        temp_path = self.checkpoint_dir / "step_checkpoint.tmp"
+        final_path = self.checkpoint_dir / "step_checkpoint.pt"
+        final_path.parent.mkdir(parents=True, exist_ok=True)
+
+        print("Saving step checkpoint...")
+        print(f"Epoch {epoch + 1} Step {batch_index + 1}")
+        sys.stdout.flush()
+
+        try:
+            torch.save(checkpoint, temp_path)
+            import os
+            os.replace(str(temp_path), str(final_path))
+        except Exception as e:
+            LOGGER.error("Failed to save step checkpoint: %s", e)
  
     def _log_epoch(self, metrics: EpochMetrics) -> None:
         """Log epoch-level training and validation summary."""
@@ -423,6 +533,12 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         default="",
         help="Optional checkpoint path to resume training.",
     )
+    parser.add_argument(
+        "--step-checkpoint-interval",
+        type=int,
+        default=200,
+        help="Save a step checkpoint every N iterations.",
+    )
  
     # Model hyperparameters (forwarded to build_swinir)
     parser.add_argument("--in-chans", type=int, default=1, help="Input channels (1=grayscale).")
@@ -469,6 +585,16 @@ def _configure_logging(output_dir: Path) -> None:
     )
  
  
+def _safe_load(checkpoint_path: Path, device: torch.device | str) -> dict:
+    """Load a torch checkpoint safely, setting weights_only=False if supported."""
+    import inspect
+    sig = inspect.signature(torch.load)
+    load_kwargs = {}
+    if "weights_only" in sig.parameters:
+        load_kwargs["weights_only"] = False
+    return torch.load(checkpoint_path, map_location=device, **load_kwargs)
+
+
 def _resolve_device(device_arg: str) -> torch.device:
     """Resolve the torch device from CLI input."""
     if device_arg == "auto":
