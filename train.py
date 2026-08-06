@@ -354,11 +354,6 @@ class Trainer:
                 best_path,
                 metrics.psnr,
             )
-            # Remove stale step checkpoint after successful epoch checkpoint
-            step_checkpoint = self.checkpoint_dir / "step_checkpoint.pt"
-if step_checkpoint.exists():
-    step_checkpoint.unlink()
-    LOGGER.info("Removed step checkpoint after successful epoch save.")
  
     def _load_checkpoint(self, checkpoint_path: Path) -> None:
         """Restore model, optimizer, and training progress from a checkpoint."""
