@@ -426,20 +426,20 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
  
     # Model hyperparameters (forwarded to build_swinir)
     parser.add_argument("--in-chans", type=int, default=1, help="Input channels (1=grayscale).")
-    parser.add_argument("--embed-dim", type=int, default=60, help="SwinIR embedding dimension.")
+    parser.add_argument("--embed-dim", type=int, default=180, help="SwinIR embedding dimension.")
  
     parser.add_argument(
         "--depths",
         type=int,
         nargs="+",
-        default=[2, 2, 2, 2],
+        default=[6,6,6,6,6,6],
         help="Number of transformer blocks per RSTB stage.",
     )
     parser.add_argument(
         "--num-heads",
         type=int,
         nargs="+",
-        default=[2, 2, 2, 2],
+        default=[6,6,6,6,6,6],
         help="Attention heads per RSTB stage.",
     )
     parser.add_argument("--window-size", type=int, default=8, help="Swin attention window size.")

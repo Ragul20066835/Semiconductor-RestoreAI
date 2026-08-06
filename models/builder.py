@@ -27,9 +27,9 @@ def build_swinir(
     img_size: int = 128,
     patch_size: int = 1,
     in_chans: int = 1,
-    embed_dim: int = 60,
-    depths: Sequence[int] = (2, 2, 2, 2),
-    num_heads: Sequence[int] = (2, 2, 2, 2),
+    embed_dim: int = 180,
+    depths: Sequence[int] = (6, 6, 6, 6, 6, 6),
+    num_heads: Sequence[int] = (6, 6, 6, 6, 6, 6),
     window_size: int = 8,
     mlp_ratio: float = 2.0,
     qkv_bias: bool = True,
@@ -106,7 +106,7 @@ def build_swinir(
         - ``"pixelshuffle"``: classical super-resolution (project default for 2× SR)
         - ``"pixelshuffledirect"``: lightweight super-resolution
         - ``"nearest+conv"``: real-world super-resolution
-        - ``""`` (empty string): same-resolution restoration / denoising only
+        - ``"" (empty string): same-resolution restoration / denoising only
     resi_connection:
         Convolution style before the residual connection inside each RSTB.
         Either ``"1conv"`` or ``"3conv"``.
@@ -122,6 +122,10 @@ def build_swinir(
     ValueError
         If hyperparameter combinations are invalid.
     """
+    embed_dim = 180
+    depths = (6, 6, 6, 6, 6, 6)
+    num_heads = (6, 6, 6, 6, 6, 6)
+
     depths_list = _validate_int_sequence(depths, name="depths")
     num_heads_list = _validate_int_sequence(num_heads, name="num_heads")
 
