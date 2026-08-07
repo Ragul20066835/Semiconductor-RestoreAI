@@ -404,12 +404,14 @@ class Trainer:
         if "torch_random_state" in checkpoint:
             torch.set_rng_state(checkpoint["torch_random_state"].cpu())
 
-        if (
-            torch.cuda.is_available()
-            and "torch_cuda_random_state" in checkpoint
-            and checkpoint["torch_cuda_random_state"] is not None
-        ):
-            torch.cuda.set_rng_state_all(checkpoint["torch_cuda_random_state"])
+        if ( 
+            torch.cuda.is_available() 
+            and "torch_cuda_random_state" in checkpoint 
+            and checkpoint["torch_cuda_random_state"] is not None 
+            ): 
+            torch.cuda.set_rng_state_all([ 
+                state.cpu().byte() for state in checkpoint["torch_cuda_random_state"] 
+                ])
 
         LOGGER.info(
             "Resumed from checkpoint '%s' at epoch %d (best PSNR: %.4f dB).",
@@ -515,17 +517,17 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         help="Limit number of validation samples for debugging.",
     )
     parser.add_argument(
-    "--num-workers",
-    type=int,
-    default=0,
-    help="DataLoader worker processes.",
+        "--num-workers",
+        type=int,
+        default=0,
+        help="DataLoader worker processes.",
     )
 
     parser.add_argument(
-    "--log-interval",
-    type=int,
-    default=10,
-    help="Print training loss every N batches.",
+        "--log-interval",
+        type=int,
+        default=10,
+        help="Print training loss every N batches.",
     )
     
     parser.add_argument(
