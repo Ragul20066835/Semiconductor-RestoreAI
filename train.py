@@ -395,11 +395,18 @@ if step_checkpoint.exists():
 
         if "random_state" in checkpoint:
             random.setstate(checkpoint["random_state"])
+
         if "np_random_state" in checkpoint:
             np.random.set_state(checkpoint["np_random_state"])
+
         if "torch_random_state" in checkpoint:
             torch.set_rng_state(checkpoint["torch_random_state"].cpu())
-        if "torch_cuda_random_state" in checkpoint and checkpoint["torch_cuda_random_state"] is not None and torch.cuda.is_available():
+
+        if (
+            torch.cuda.is_available()
+            and "torch_cuda_random_state" in checkpoint
+            and checkpoint["torch_cuda_random_state"] is not None
+        ):
             torch.cuda.set_rng_state_all(checkpoint["torch_cuda_random_state"])
 
         LOGGER.info(
