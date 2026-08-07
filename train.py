@@ -414,7 +414,6 @@ if step_checkpoint.exists():
             self.start_epoch + 1,
             self.best_psnr,
         )
-        )
      def _save_step_checkpoint(self, epoch: int, batch_index: int, running_loss: float) -> None:
         """Save a step checkpoint atomically."""
         checkpoint = {
