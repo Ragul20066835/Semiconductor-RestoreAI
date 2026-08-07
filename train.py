@@ -399,18 +399,17 @@ class Trainer:
     and "torch_cuda_random_state" in checkpoint
     and checkpoint["torch_cuda_random_state"] is not None
 ):
-    try:
-        states = checkpoint["torch_cuda_random_state"]
-
-        if isinstance(states, list):
-            torch.cuda.set_rng_state_all(states)
-        else:
-            torch.cuda.set_rng_state(states)
-    except Exception as e:
-        LOGGER.warning(
-            "Skipping CUDA RNG state restore: %s",
-            e,
-        )
+ try:
+  states = checkpoint["torch_cuda_random_state"]
+  if isinstance(states, list):
+   torch.cuda.set_rng_state_all(states)
+  else:
+   torch.cuda.set_rng_state(states)
+ except Exception as e:
+  LOGGER.warning(
+   "Skipping CUDA RNG state restore: %s",
+   e,
+  )
  
         LOGGER.info(
             "Resumed from checkpoint '%s' at epoch %d (best PSNR: %.4f dB).",
