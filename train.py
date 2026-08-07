@@ -409,12 +409,6 @@ class Trainer:
             and "torch_cuda_random_state" in checkpoint
             and checkpoint["torch_cuda_random_state"] is not None
         ):
-
-        if (
-            torch.cuda.is_available()
-            and "torch_cuda_random_state" in checkpoint
-            and checkpoint["torch_cuda_random_state"] is not None
-        ):
             torch.cuda.set_rng_state_all(checkpoint["torch_cuda_random_state"])
 
         LOGGER.info(
@@ -423,7 +417,7 @@ class Trainer:
             self.start_epoch + 1,
             self.best_psnr,
         )
-     def _save_step_checkpoint(self, epoch: int, batch_index: int, running_loss: float) -> None:
+    def _save_step_checkpoint(self, epoch: int, batch_index: int, running_loss: float) -> None:
         """Save a step checkpoint atomically."""
         checkpoint = {
             "model_state_dict": self.model.state_dict(),

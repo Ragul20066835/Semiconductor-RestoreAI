@@ -19,3 +19,4 @@ env/
 *.log
 
 SwinIR/
+dataset.zip
