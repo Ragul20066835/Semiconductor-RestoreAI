@@ -408,12 +408,12 @@ if step_checkpoint.exists():
             and checkpoint["torch_cuda_random_state"] is not None
         ):
             torch.cuda.set_rng_state_all(checkpoint["torch_cuda_random_state"])
-
         LOGGER.info(
             "Resumed from checkpoint '%s' at epoch %d (best PSNR: %.4f dB).",
             checkpoint_path,
             self.start_epoch + 1,
             self.best_psnr,
+        )
         )
      def _save_step_checkpoint(self, epoch: int, batch_index: int, running_loss: float) -> None:
         """Save a step checkpoint atomically."""
