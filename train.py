@@ -356,10 +356,10 @@ class Trainer:
             )
             # Remove stale step checkpoint after successful epoch checkpoint
             step_checkpoint = self.checkpoint_dir / "step_checkpoint.pt"
-if step_checkpoint.exists():
-    step_checkpoint.unlink()
-    LOGGER.info("Removed step checkpoint after successful epoch save.")
- 
+            if step_checkpoint.exists():
+                step_checkpoint.unlink()
+                LOGGER.info("Removed step checkpoint after successful epoch save.")
+
     def _load_checkpoint(self, checkpoint_path: Path) -> None:
         """Restore model, optimizer, and training progress from a checkpoint."""
         if not checkpoint_path.is_file():
@@ -396,8 +396,10 @@ if step_checkpoint.exists():
         if "random_state" in checkpoint:
             random.setstate(checkpoint["random_state"])
 
+
         if "np_random_state" in checkpoint:
             np.random.set_state(checkpoint["np_random_state"])
+
 
         if "torch_random_state" in checkpoint:
             torch.set_rng_state(checkpoint["torch_random_state"].cpu())
@@ -407,7 +409,14 @@ if step_checkpoint.exists():
             and "torch_cuda_random_state" in checkpoint
             and checkpoint["torch_cuda_random_state"] is not None
         ):
+
+        if (
+            torch.cuda.is_available()
+            and "torch_cuda_random_state" in checkpoint
+            and checkpoint["torch_cuda_random_state"] is not None
+        ):
             torch.cuda.set_rng_state_all(checkpoint["torch_cuda_random_state"])
+
         LOGGER.info(
             "Resumed from checkpoint '%s' at epoch %d (best PSNR: %.4f dB).",
             checkpoint_path,
